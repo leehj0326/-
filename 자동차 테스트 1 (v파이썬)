@@ -42,7 +42,6 @@ brake_start_x = -1.0
 # 5. UI 컨트롤러 배치
 scene.append_to_caption("\n=== 제어판 ===\n\n")
 
-# 질량에 따른 차종 분류 함수
 def get_car_type(mass):
     if mass <= 1200:
         return "경차 (예: 모닝, 레이)"
@@ -57,7 +56,6 @@ def get_car_type(mass):
     else:
         return "대형 트럭/대형 덤프트럭 (25톤 카고 등)"
 
-# 마찰 계수에 따른 브레이크 상태 분류 함수
 def get_brake_type(mu):
     if mu <= 0.2:
         return "❄️ 빙판길 / 빗길 수막현상 (매우 미끄러움)"
@@ -70,17 +68,14 @@ def get_brake_type(mu):
     else:
         return "🏎️ 고성능 레이싱 카 / 초강력 흡착 제동 시스템"
 
-# 이벤트 핸들러 함수들
 def set_mass(s):
     global m_val
-    m_val = s.value
     car_type = get_car_type(m_val)
     car_type_txt.text = f"<span style='font-size: 12px; color: #666;'>[차종 가이드] {car_type}</span><br>"
     mass_txt.text = f" 차량 질량: {m_val:,} kg ({m_val/1000:.2f} t)"
 
 def set_speed(s):
     global v_kmh
-    v_kmh = s.value
     speed_txt.text = f" 초기 속도: {v_kmh:>3} km/h"
 
 def set_friction(s):
@@ -94,11 +89,9 @@ def run_button(b):
     global running
     running = True
 
-# 버튼 배치
 button(text="▶ 테스트 시작", bind=run_button)
 scene.append_to_caption("\n\n")
 
-# 질량 슬라이더 레이아웃
 car_type = get_car_type(m_val)
 car_type_txt = wtext(text=f"<span style='font-size: 12px; color: #666;'>[차종 가이드] {car_type}</span><br>")
 mass_txt = wtext(text=f" 차량 질량: {m_val:,} kg ({m_val/1000:.2f} t)")
@@ -106,13 +99,11 @@ scene.append_to_caption("<br>")
 slider(min=500, max=25000, value=1500, step=100, length=300, bind=set_mass)
 scene.append_to_caption("\n\n")
 
-# 속도 슬라이더 레이아웃
 speed_txt = wtext(text=f" 초기 속도: {v_kmh} km/h")
 scene.append_to_caption("<br>")
 slider(min=20, max=110, value=50, step=5, length=300, bind=set_speed)
 scene.append_to_caption("\n\n")
 
-# 마찰력 슬라이더 레이아웃 (브레이크 안내 작은 글씨 추가)
 brake_type = get_brake_type(mu_val)
 brake_type_txt = wtext(text=f"<span style='font-size: 12px; color: #666;'>[브레이크 가이드] {brake_type}</span><br>")
 fric_txt = wtext(text=f" 브레이크 강도(마찰 계수): {mu_val:.2f}")
@@ -120,7 +111,6 @@ scene.append_to_caption("<br>")
 slider(min=0.0, max=2.5, value=0.5, step=0.05, length=300, bind=set_friction)
 scene.append_to_caption("\n\n================\n")
 
-# 결과 및 탑승자 피해 시각화 창
 result_txt = wtext(text="<h3><b>[테스트 결과] 대기 중...</b></h3>")
 injury_txt = wtext(text="<div style='padding:10px; background-color:#eee; border-radius:5px;'><b>[탑승자 안전 상태]</b> 시뮬레이션을 시작해 주세요.</div>")
 
@@ -155,8 +145,14 @@ while True:
                 a_x = friction_force / current_m
                 car.v.x = car.v.x + a_x * dt
                 
-                if car.v.x < 0:
+                # [수정 포인트] 브레이크 구역에서 속도가 0 이하가 되면 완전히 정지한 것임
+                if car.v.x <= 0:
                     car.v.x = 0
+                    v_curve.plot(t, 0) # 그래프에 마지막 0점 찍어주기
+                    result_txt.text = "<h2 style='color: green;'><b>[안전 정지] 벽에 부딪히기 전에 멈췄습니다!</b></h2>"
+                    injury_txt.text = "<div style='padding:15px; background-color:#c8e6c9; border:2px solid #388e3c;'><h2><b>🟢 0단계: 절대 안전</b></h2><p>브레이크가 완벽하게 작동하여 충돌 없이 정지했습니다.</p></div>"
+                    running = False
+                    break # 완전히 정지했으므로 내부 루프 즉시 탈출 (시간 및 그래프 정지)
             
             car.pos = car.pos + car.v * dt
             t = t + dt 
@@ -169,7 +165,6 @@ while True:
                 
                 v_curve.plot(t, v_final_kmh)
                 
-                # 결과 출력 및 충격량 단계별 피해 시각화
                 if v_final_ms > 0:
                     result_txt.text = f"<h2 style='color: red;'><b>[충돌 발생] 충돌 속도: {v_final_kmh:.1f} km/h / 충격량: {impulse:.2f} N·s</b></h2>"
                     
@@ -181,9 +176,6 @@ while True:
                         injury_txt.text = "<div style='padding:15px; background-color:#ef9a9a; border:2px solid #d32f2f;'><h2><b>🔴 3단계: 강한 충격 (위험)</b></h2><p><b>에어백 전개!</b> 얼굴 타박상 및 갈비뼈 등에 골절 위험이 있습니다.</p></div>"
                     else:
                         injury_txt.text = "<div style='padding:15px; background-color:#b71c1c; color:white; border:3px solid black;'><h2><b>💀 4단계: 치명적인 충격 (중상)</b></h2><p><b>차량 전면부 대파!</b> 대형 차량의 엄청난 질량 관성으로 인해 탑승자가 중상을 입을 확률이 매우 높습니다.</p></div>"
-                else:
-                    result_txt.text = "<h2 style='color: green;'><b>[안전 정지] 벽에 부딪히기 전에 멈췄습니다!</b></h2>"
-                    injury_txt.text = "<div style='padding:15px; background-color:#c8e6c9; border:2px solid #388e3c;'><h2><b>🟢 0단계: 절대 안전</b></h2><p>브레이크가 완벽하게 작동하여 충돌 없이 정지했습니다.</p></div>"
                 
                 running = False
                 break
