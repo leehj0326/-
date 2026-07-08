@@ -6,18 +6,16 @@ scene.camera.pos = vec(-8, 16, 26)
 scene.camera.axis = vec(3, -15, -26) 
 scene.up = vec(0, 1, 0)
 
-# 2. 그래프 생성 (오른쪽 배치 - canvas 바로 뒤에 붙도록 align="left" 설정)
-# xmin=0.5, xmax=10.5로 설정하여 1~10 회차가 잘리지 않고 정중앙에 고정되도록 유도
-impulse_graph = graph(title="회차별 충돌 충격량 비교 (단위: 만 N·s)", xtitle="테스트 회차 (회)", ytitle="충격량", 
+# 2. 그래프 생성 (오른쪽 배치 - Y축 상한을 250으로 낮춰 막대 크기를 대폭 키움)
+impulse_graph = graph(title="회차별 충돌 충격량 비교 (단위: kN·s)", xtitle="테스트 회차 (회)", ytitle="충격량 (kN·s)", 
                       width=550, height=380, align="left",
-                      xmin=0.5, xmax=10.5, ymin=0, ymax=1) 
+                      xmin=0.5, xmax=10.5, ymin=0, ymax=250) 
 
 # 세로 막대 그래프 객체 생성
 bar_chart = gvbars(color=color.red, delta=0.4)
 
-# 홀수 회차 눈금 고정 조치
-for i in range(1, 11):
-    bar_chart.plot(i, 0)
+# 처음 켰을 때 빈 그래프 틀이 유지되도록 1회차 자리에 0을 먼저 찍어둡니다.
+bar_chart.plot(1, 0)
 
 test_count = 1 
 
@@ -89,7 +87,6 @@ v_kmh = 50
 mu_val = 0.5   
 
 running = False
-has_run = False 
 brake_start_x = 5.0 
 
 START_FRONT_X = -25.0
@@ -99,7 +96,6 @@ car.v = vec(0, 0, 0)
 # 5. UI 컨트롤러 배치 및 가이드 함수
 scene.append_to_caption("<div style='clear:both;'></div>\n=== 제어판 ===\n\n")
 
-# 브레이크 강도별 이모지와 실시간 설명 텍스트를 반환하는 함수
 def get_brake_guide(mu):
     if mu < 0.2: return "❄️ [빙판길] 미끄러짐 위험 극도로 높음"
     elif mu < 0.4: return "🌧️ [빗길/수막현상] 제동 거리 크게 증가"
@@ -137,30 +133,27 @@ def set_friction(s):
     fric_txt.text = f" 브레이크 강도(마찰 계수): {mu_val:.2f} <span style='font-size:12px; color:#cc6600;'>[{guide}]</span>"
 
 def run_button(b):
-    global running, has_run
+    global running, car
     if not running and test_count <= 10: 
+        car.visible = False
+        car, current_front_offset = build_car(m_val, START_FRONT_X)
+        v_ms = v_kmh / 3.6
+        car.v = vec(v_ms, 0, 0)
+        result_txt.text = f"<h3><b>[테스트 결과] {test_count}회차 진행 중...</b></h3>"
         running = True
-        has_run = True
 
 def reset_button(b):
-    global running, car, current_front_offset, test_count, has_run
+    global running, car, current_front_offset
     running = False 
     car.visible = False
     car, current_front_offset = build_car(m_val, START_FRONT_X)
     car.v = vec(0, 0, 0)
-    
-    if has_run:
-        test_count += 1
-        has_run = False 
-    
     if test_count <= 10:
         result_txt.text = f"<h3><b>[테스트 결과] {test_count}회차 대기 중...</b></h3>"
-    else:
-        result_txt.text = "<h3><b>[테스트 종료] 최대 테스트 횟수(10회)에 도달했습니다.</b></h3>"
 
 button(text="▶ 테스트 시작", bind=run_button)
 scene.append_to_caption("   ")
-button(text="🔄 처음 위치로 초기화", bind=reset_button)
+button(text="🔄 수동 초기화", bind=reset_button)
 scene.append_to_caption("\n\n")
 
 car_type = get_car_type(m_val)
@@ -175,7 +168,6 @@ scene.append_to_caption("<br>")
 slider(min=20, max=110, value=50, step=5, length=300, bind=set_speed)
 scene.append_to_caption("\n\n")
 
-# 브레이크 강도 설명 및 이모지 바인딩
 initial_guide = get_brake_guide(mu_val)
 fric_txt = wtext(text=f" 브레이크 강도(마찰 계수): {mu_val:.2f} <span style='font-size:12px; color:#cc6600;'>[{initial_guide}]</span>")
 scene.append_to_caption("<br>")
@@ -192,30 +184,35 @@ while True:
     if running:
         current_mu = mu_val 
         current_m = m_val
-        v_ms = v_kmh / 3.6
-        car.v = vec(v_ms, 0, 0)
-        car.pos = vec(START_FRONT_X - current_front_offset, 0.3, 0)
-        result_txt.text = f"<h3><b>[테스트 결과] {test_count}회차 진행 중...</b></h3>"
         
         while True:
             rate(100)
             if not running: break
             current_nose_x = car.pos.x + current_front_offset
             
+            # [제동 구간 연산]
             if current_nose_x >= brake_start_x:
                 friction_force = -current_mu * current_m * g
                 a_x = friction_force / current_m
                 car.v.x = car.v.x + a_x * dt
                 
+                # 완전히 멈췄을 때 (안전 정지 성공)
                 if car.v.x <= 0:
                     car.v.x = 0
-                    result_txt.text = "<h2 style='color: green;'><b>[안전 정지] 벽에 부딪히기 전에 안전하게 멈췄습니다! (충격량: 0 N·s)</b></h2>"
-                    bar_chart.plot(test_count, 0) 
+                    result_txt.text = f"<h2 style='color: green;'><b>[안전 정지] {test_count}회차 - 벽에 부딪히기 전에 안전하게 멈췄습니다! (충격량: 0 N·s)</b></h2>"
+                    
+                    # Y축이 250이므로 안전정지 시 바닥에 살짝 인지될 만한 수준인 5 고정 입력
+                    zero_indicator = 5.0
+                    bar_chart.plot(test_count, zero_indicator)
+                    
+                    test_count += 1
                     running = False
                     break 
             
+            # 물리적 이동 업데이트
             car.pos = car.pos + car.v * dt
             
+            # [충돌 연산]
             if current_nose_x >= wall.pos.x - 0.25:
                 car.pos.x = (wall.pos.x - 0.25) - current_front_offset
                 v_final_ms = car.v.x
@@ -223,12 +220,19 @@ while True:
                 impulse = current_m * v_final_ms 
                 
                 if v_final_ms > 0:
-                    result_txt.text = f"<h2 style='color: red;'><b>[💥 충돌 발생] 충돌 속도: {v_final_kmh:.1f} km/h | 최종 충격량: {impulse:,.0f} N·s</b></h2>"
-                    impulse_scaled = impulse / 10000.0
-                    if impulse_scaled > impulse_graph.ymax:
-                        impulse_graph.ymax = impulse_scaled * 1.2
-                        
-                    bar_chart.plot(test_count, impulse_scaled) 
+                    result_txt.text = f"<h2 style='color: red;'><b>[💥 충돌 발생] {test_count}회차 - 충돌 속도: {v_final_kmh:.1f} km/h | 최종 충격량: {impulse:,.0f} N·s</b></h2>"
+                    
+                    # 단위를 kN·s로 환산 (/ 1000)
+                    impulse_kn = impulse / 1000.0
+                    
+                    # [수정] 전체 250 스케일 안에서 낮은 값(14.6 등)도 뭉개지지 않고 확실한 기둥 형태를 갖추도록 하한 보정폭을 조절
+                    final_plot_value = max(impulse_kn, 15.0)
+                    
+                    bar_chart.plot(test_count, final_plot_value)
+                    test_count += 1
                 
                 running = False
                 break
+        
+        if test_count > 10:
+            result_txt.text = "<h3><b>[테스트 종료] 최대 테스트 횟수(10회)에 도달했습니다.</b></h3>"
