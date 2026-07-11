@@ -6,7 +6,7 @@ scene.camera.pos = vec(-8, 16, 26)
 scene.camera.axis = vec(3, -15, -26) 
 scene.up = vec(0, 1, 0)
 
-# 2. 그래프 생성 (오른쪽 배치 - Y축 상한을 250으로 낮춰 막대 크기를 대폭 키움)
+# 2. 그래프 생성 (오른쪽 배치)
 impulse_graph = graph(title="회차별 충돌 충격량 비교 (단위: kN·s)", xtitle="테스트 회차 (회)", ytitle="충격량 (kN·s)", 
                       width=550, height=380, align="left",
                       xmin=0.5, xmax=10.5, ymin=0, ymax=250) 
@@ -14,8 +14,9 @@ impulse_graph = graph(title="회차별 충돌 충격량 비교 (단위: kN·s)",
 # 세로 막대 그래프 객체 생성
 bar_chart = gvbars(color=color.red, delta=0.4)
 
-# 처음 켰을 때 빈 그래프 틀이 유지되도록 1회차 자리에 0을 먼저 찍어둡니다.
-bar_chart.plot(1, 0)
+# [버그 수정] ymin인 0보다 작은 음수 영역에 더미 데이터를 찍어 X축 선이 무조건 그려지도록 강제합니다.
+sleep(0.1)
+bar_chart.plot(0, -10)
 
 test_count = 1 
 
@@ -142,18 +143,28 @@ def run_button(b):
         result_txt.text = f"<h3><b>[테스트 결과] {test_count}회차 진행 중...</b></h3>"
         running = True
 
-def reset_button(b):
-    global running, car, current_front_offset
+# 그래프 및 데이터 초기화 기능
+def reset_graph_button(b):
+    global running, car, current_front_offset, test_count
     running = False 
+    
+    # 1. 자동차 원래 위치로 초기화 및 정지
     car.visible = False
     car, current_front_offset = build_car(m_val, START_FRONT_X)
     car.v = vec(0, 0, 0)
-    if test_count <= 10:
-        result_txt.text = f"<h3><b>[테스트 결과] {test_count}회차 대기 중...</b></h3>"
+    
+    # 2. 테스트 횟수 리셋 및 텍스트 변경
+    test_count = 1
+    result_txt.text = f"<h3><b>[테스트 결과] {test_count}회차 대기 중... (그래프 초기화됨)</b></h3>"
+    
+    # 3. 그래프 데이터 완전히 삭제 후 딜레이 및 축 선 확보용 점 플롯
+    bar_chart.delete()
+    sleep(0.05)
+    bar_chart.plot(0, -10)
 
 button(text="▶ 테스트 시작", bind=run_button)
 scene.append_to_caption("   ")
-button(text="🔄 수동 초기화", bind=reset_button)
+button(text="🧹 그래프 및 데이터 초기화", bind=reset_graph_button)
 scene.append_to_caption("\n\n")
 
 car_type = get_car_type(m_val)
@@ -175,6 +186,9 @@ slider(min=0.0, max=2.5, value=0.5, step=0.05, length=300, bind=set_friction)
 scene.append_to_caption("\n\n================\n")
 
 result_txt = wtext(text="<h3><b>[테스트 결과] 1회차 대기 중...</b></h3>")
+
+# [추가] 시작하자마자 그래프 초기화 함수를 강제로 1번 실행하여 완벽한 상태로 세팅합니다.
+reset_graph_button(None)
 
 # 6. 메인 루프
 dt = 0.01
@@ -225,7 +239,7 @@ while True:
                     # 단위를 kN·s로 환산 (/ 1000)
                     impulse_kn = impulse / 1000.0
                     
-                    # [수정] 전체 250 스케일 안에서 낮은 값(14.6 등)도 뭉개지지 않고 확실한 기둥 형태를 갖추도록 하한 보정폭을 조절
+                    # 전체 250 스케일 안에서 낮은 값도 뭉개지지 않고 확실한 기둥 형태를 갖추도록 하한 보정폭을 조절
                     final_plot_value = max(impulse_kn, 15.0)
                     
                     bar_chart.plot(test_count, final_plot_value)
@@ -235,4 +249,4 @@ while True:
                 break
         
         if test_count > 10:
-            result_txt.text = "<h3><b>[테스트 종료] 최대 테스트 횟수(10회)에 도달했습니다.</b></h3>"
+            result_txt.text = "<h3><b>[테스트 종료] 최대 테스트 횟수(10회)에 도달했습니다. 🧹초기화 후 다시 실행해주세요.</b></h3>"
